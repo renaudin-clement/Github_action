@@ -2,3 +2,11 @@ asgiref==3.9.1
 Django==5.2.5
 django-debug-toolbar==6.0.0
 sqlparse==0.5.3
+
+pytest
+coverage
+pytest-cov
+autopep8
+flake8
+setuptools[core]
+build
