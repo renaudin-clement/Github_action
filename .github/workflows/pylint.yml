@@ -1,23 +1,114 @@
-name: Pylint
+name: CI
 
-on: [push]
+on: [push,pull_request]
 
 jobs:
-  build:
+  build_package:
     runs-on: ubuntu-latest
     strategy:
-      matrix:
-        python-version: ["3.8", "3.9", "3.10"]
+        matrix:
+          python-version: ["3.10"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./requirements.txt      
+
+      - name: build
+        run: |
+          PYTHONPATH=./src python -m build
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: my-artifact
+          path: dist/
+          overwrite: True
+          
+
+
+
+  linter:
+
+    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+          python-version: ["3.10"]
     steps:
     - uses: actions/checkout@v4
     - name: Set up Python ${{ matrix.python-version }}
-      uses: actions/setup-python@v3
+      uses: actions/setup-python@v6
       with:
         python-version: ${{ matrix.python-version }}
+        cache: 'pip'
     - name: Install dependencies
       run: |
         python -m pip install --upgrade pip
-        pip install pylint
-    - name: Analysing the code with pylint
+        pip install -r ./requirements.txt
+
+    
+    - name: Lint with flake8
+      id: flake8
+      continue-on-error: true
       run: |
-        pylint $(git ls-files '*.py')
+          # fail if there are any flake8 errors
+          flake8 . --count --max-complexity=15 --max-line-length=127 --statistics --show-source
+
+
+    - name: Analysing the code with autopep8
+      id: autopep8
+      uses: peter-evans/autopep8@v2
+      with:
+        args: --recursive --in-place --aggressive --aggressive .
+
+    - name: Fail if autopep8 made changes
+      if: steps.autopep8.outputs.exit-code == 2
+      run: exit 1
+
+
+
+  unit_tests:
+    needs: build_package
+    runs-on: ubuntu-latest
+    strategy:
+        matrix:
+          python-version: ["3.10"]
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v6
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: 'pip'
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r ./requirements.txt      
+            
+      - uses: actions/download-artifact@v4
+        with:
+            name: my-artifact
+            path: dist/
+
+      - name: Test with pytest
+        run: |
+            PYTHONPATH=./src python -m pytest -v
+
+      - name: Test with pytest coverage 
+        run: |
+            PYTHONPATH=./src pytest --cov=./src --cov-report term-missing
+            
+
+      - name: Test with pytest coverage and make reaport 
+        run: |
+            PYTHONPATH=./src pytest --cov=./src --cov-report html
+      - uses: actions/upload-artifact@v4
+        with:
+          name: my-artifact
+          path: coverage_html_report
+          overwrite: True
